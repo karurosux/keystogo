@@ -1,4 +1,4 @@
-package keystogo
+package models
 
 import (
 	"time"
@@ -13,6 +13,7 @@ type APIKey struct {
 	Key         string // Hashed key value
 	Name        string // Human readable name
 	Permissions []Permission
+	Metadata    map[string]any
 	CreatedAt   time.Time
 	ExpiresAt   *time.Time // Optional expiration
 	LastUsedAt  *time.Time
@@ -25,21 +26,4 @@ type RateLimit struct {
 	RequestsPerMinute int
 	RequestsPerHour   int
 	RequestsPerDay    int
-}
-
-// Storage defines the interface that must be implemented by persistence layers
-type Storage interface {
-	// GetAPIKey retrieves an API key by its hashed value
-	GetAPIKey(hashedKey string) (*APIKey, error)
-
-	// UpdateLastUsed updates the LastUsedAt timestamp
-	UpdateLastUsed(keyID string, usedAt time.Time) error
-}
-
-// ValidationResult represents the result of validating an API key
-type ValidationResult struct {
-	Valid       bool
-	APIKey      *APIKey
-	Error       error
-	Permissions []Permission
 }
