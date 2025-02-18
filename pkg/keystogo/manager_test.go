@@ -176,3 +176,38 @@ func TestManager_GenerateApiKey(t *testing.T) {
 	// key is meant to be public.
 	a.NotEqual(key, apiKey.Key, "should return different key from api key and key.")
 }
+
+func TestManager_ValidateKey(t *testing.T) {
+	const fakeKey = "fake-key"
+
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	res := mngr.ValidateKey("", []models.Permission{})
+	a.False(res.Valid, "should fail on empty key")
+	a.Equal(models.ErrKeyNotFound, res.Error, "should return ErrKeyNotFound")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    keystogo.HashKey(fakeKey),
+		Active: true,
+	})
+
+	res = mngr.ValidateKey(fakeKey, []models.Permission{})
+	a.True(res.Valid, "should succeed for existing key")
+	a.Equal(keystogo.HashKey(fakeKey), res.APIKey.Key, "should return same key")
+
+	res = mngr.ValidateKey(fakeKey, []models.Permission{"read:users"})
+	a.False(res.Valid, "should fail if key does not have required permissions")
+
+	strg.Create(&models.APIKey{
+		Name:        "test-key",
+		Key:         keystogo.HashKey(fakeKey),
+		Active:      true,
+		Permissions: []models.Permission{"read:users"},
+	})
+
+	res = mngr.ValidateKey(fakeKey, []models.Permission{"read:users"})
+	a.True(res.Valid, "should succeed if key has required permissions")
+}

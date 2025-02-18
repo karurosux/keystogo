@@ -60,8 +60,18 @@ You can implement your own storage backend by implementing the `Storage` interfa
 
 ```go
 type Storage interface {
-    GetAPIKey(hashedKey string) (*APIKey, error)
-    UpdateLastUsed(keyID string, usedAt time.Time) error
+    Get(hashedKey string) (*models.APIKey, error)
+    Create(apiKey *models.APIKey) error
+    Update(apiKey *models.APIKey) error
+    Delete(hashedKey string) error
+
+    List(page Page, filter Filter) ([]models.APIKey, int64, error)
+
+    BatchCreate(apiKeys []*models.APIKey) error
+    BatchDelete(hashedKeys []string) error
+
+    Ping() error
+    Clear() error
 }
 ```
 
@@ -87,13 +97,11 @@ func NewCustomStorage() keystogo.Storage {
     return &CustomStorage{}
 }
 
-func (s *CustomStorage) GetAPIKey(hashedKey string) (*keystogo.APIKey, error) {
+func (s *CustomStorage) Get(hashedKey string) (*keystogo.APIKey, error) {
     // Your implementation
 }
 
-func (s *CustomStorage) UpdateLastUsed(keyID string, usedAt time.Time) error {
-    // Your implementation
-}
+... Other implementations
 
 // Use your custom storage
 storage := NewCustomStorage()
