@@ -14,13 +14,13 @@ import (
 
 // Manager handles API key validation and permission checking
 type Manager struct {
-	storage Storage
+	Storage Storage
 }
 
 // NewManager creates a new API key manager with the given storage implementation
 func NewManager(storage Storage) *Manager {
 	return &Manager{
-		storage: storage,
+		Storage: storage,
 	}
 }
 
@@ -28,7 +28,7 @@ func NewManager(storage Storage) *Manager {
 func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permission) models.ValidationResult {
 	hashedKey := HashKey(key)
 
-	apiKey, err := m.storage.Get(hashedKey)
+	apiKey, err := m.Storage.Get(hashedKey)
 	if err != nil {
 		return models.ValidationResult{Valid: false, Error: models.ErrKeyNotFound}
 	}
@@ -51,7 +51,7 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 	// Update last used timestamp
 	now := time.Now()
 	apiKey.LastUsedAt = &now
-	if err := m.storage.Update(apiKey); err != nil {
+	if err := m.Storage.Update(apiKey); err != nil {
 		return models.ValidationResult{Valid: false, Error: err}
 	}
 
@@ -63,7 +63,7 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 }
 
 func (m *Manager) DisableKey(key string) error {
-	keyApi, err := m.storage.Get(HashKey(key))
+	keyApi, err := m.Storage.Get(HashKey(key))
 	if err != nil {
 		return err
 	}
@@ -72,14 +72,14 @@ func (m *Manager) DisableKey(key string) error {
 	}
 
 	keyApi.Active = false
-	if err := m.storage.Update(keyApi); err != nil {
+	if err := m.Storage.Update(keyApi); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Manager) EnableKey(key string) error {
-	keyApi, err := m.storage.Get(HashKey(key))
+	keyApi, err := m.Storage.Get(HashKey(key))
 	if err != nil {
 		return err
 	}
@@ -87,8 +87,8 @@ func (m *Manager) EnableKey(key string) error {
 		return models.ErrKeyNotFound
 	}
 
-	keyApi.Active = false
-	if err := m.storage.Update(keyApi); err != nil {
+	keyApi.Active = true
+	if err := m.Storage.Update(keyApi); err != nil {
 		return err
 	}
 	return nil
@@ -98,7 +98,7 @@ func (m *Manager) DeleteKey(key string) error {
 	if key == "" {
 		return errors.New("key is required")
 	}
-	return m.storage.Delete(HashKey(key))
+	return m.Storage.Delete(HashKey(key))
 }
 
 // RenewKey creates a new API key while invalidating the old one
@@ -107,7 +107,7 @@ func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
 		return models.APIKey{}, "", errors.New("key is required")
 	}
 	oldHash := HashKey(key)
-	oldKey, err := m.storage.Get(oldHash)
+	oldKey, err := m.Storage.Get(oldHash)
 	if err != nil {
 		return models.APIKey{}, "", err
 	}
@@ -124,7 +124,7 @@ func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
 	}
 
 	// Disable old key
-	if err := m.DisableKey(oldHash); err != nil {
+	if err := m.DisableKey(key); err != nil {
 		return models.APIKey{}, "", err
 	}
 
@@ -133,7 +133,7 @@ func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
 
 // ListKeys returns a paginated list of API keys
 func (m *Manager) ListKeys(page Page, filter Filter) ([]models.APIKey, int64, error) {
-	return m.storage.List(page, filter)
+	return m.Storage.List(page, filter)
 }
 
 func (Manager) GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {

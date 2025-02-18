@@ -2,182 +2,177 @@ package keystogo_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/karurosux/keystogo/pkg/keystogo"
 	"github.com/karurosux/keystogo/pkg/models"
 	"github.com/karurosux/keystogo/pkg/storage"
+	"github.com/stretchr/testify/assert"
 )
 
-func getManager() (*keystogo.Manager, keystogo.Storage) {
-	storage := storage.NewMemoryStorage()
-	manager := keystogo.NewManager(storage)
-	return manager, storage
-}
-
 func TestManager_EnableKey(t *testing.T) {
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for receiver constructor.
-		storage keystogo.Storage
-		// Named input parameters for target function.
-		key     string
-		wantErr bool
-	}{
-		{name: "should fail for empty key", storage: storage.NewMemoryStorage(), key: "", wantErr: true},
-		{name: "should fail for non-existing key", storage: storage.NewMemoryStorage(), key: "non-existing-key", wantErr: true},
-		{name: "should enable existing key", storage: (func() keystogo.Storage {
-			storage := storage.NewMemoryStorage()
-			storage.Create(&models.APIKey{
-				Name:   "test-key",
-				Key:    keystogo.HashKey("fake-key"),
-				Active: false,
-			})
-			return storage
-		})(), key: "fake-key", wantErr: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := keystogo.NewManager(tt.storage)
-			gotErr := m.EnableKey(tt.key)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("EnableKey() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("EnableKey() succeeded unexpectedly")
-			}
-		})
-	}
+	const fakeKey = "fake-key"
+
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	err := mngr.EnableKey("")
+	a.Error(err, "should fail on empty key")
+
+	err = mngr.EnableKey("non-existent-key")
+	a.Error(err, "should fail on non-existent key")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    keystogo.HashKey(fakeKey),
+		Active: false,
+	})
+
+	err = mngr.EnableKey(fakeKey)
+	a.NoError(err, "should succeed for existing key")
+
+	apiKey, err := strg.Get(keystogo.HashKey(fakeKey))
+	a.NoError(err, "should find the key")
+	a.True(apiKey.Active, "key should be enabled")
+
+	err = mngr.EnableKey(fakeKey)
+	a.NoError(err, "should succeed when enabling already enabled key")
 }
 
 func TestManager_DisableKey(t *testing.T) {
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for receiver constructor.
-		storage keystogo.Storage
-		// Named input parameters for target function.
-		key     string
-		wantErr bool
-	}{
-		{name: "should fail for empty key", storage: storage.NewMemoryStorage(), key: "", wantErr: true},
-		{name: "should fail for non-existing key", storage: storage.NewMemoryStorage(), key: "non-existing-key", wantErr: true},
-		{name: "should disable existing key", storage: (func() keystogo.Storage {
-			storage := storage.NewMemoryStorage()
-			storage.Create(&models.APIKey{
-				Name:   "test-key",
-				Key:    keystogo.HashKey("fake-key"),
-				Active: true,
-			})
-			return storage
-		})(), key: "fake-key", wantErr: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := keystogo.NewManager(tt.storage)
-			gotErr := m.DisableKey(tt.key)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("DisableKey() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("DisableKey() succeeded unexpectedly")
-			}
-		})
-	}
+	const fakeKey = "fake-key"
+
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	err := mngr.DisableKey("")
+	a.Error(err, "should fail on empty key")
+
+	err = mngr.DisableKey("non-existent-key")
+	a.Error(err, "should fail on non-existent key")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    keystogo.HashKey(fakeKey),
+		Active: true,
+	})
+
+	err = mngr.DisableKey(fakeKey)
+	a.NoError(err, "should succeed for existing key")
+
+	apiKey, err := strg.Get(keystogo.HashKey(fakeKey))
+	a.NoError(err, "should find the key")
+	a.False(apiKey.Active, "key should be disabled")
+
+	err = mngr.DisableKey(fakeKey)
+	a.NoError(err, "should succeed when disabling already disabled key")
 }
 
 func TestManager_DeleteKey(t *testing.T) {
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for receiver constructor.
-		storage keystogo.Storage
-		// Named input parameters for target function.
-		key     string
-		wantErr bool
-	}{
-		{name: "should fail for empty key", storage: storage.NewMemoryStorage(), key: "", wantErr: true},
-		{name: "should delete existing key", storage: (func() keystogo.Storage {
-			storage := storage.NewMemoryStorage()
-			storage.Create(&models.APIKey{
-				Name:   "test-key",
-				Key:    keystogo.HashKey("fake-key"),
-				Active: true,
-			})
-			return storage
-		})(), key: "fake-key", wantErr: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := keystogo.NewManager(tt.storage)
-			gotErr := m.DeleteKey(tt.key)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("DeleteKey() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("DeleteKey() succeeded unexpectedly")
-			}
-		})
-	}
+	const fakeKey = "fake-key"
+
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	err := mngr.DeleteKey("")
+	a.Error(err, "should fail on empty key")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    keystogo.HashKey(fakeKey),
+		Active: true,
+	})
+
+	err = mngr.DeleteKey(fakeKey)
+	a.NoError(err, "should succeed for existing key")
+
+	_, err = strg.Get(keystogo.HashKey(fakeKey))
+	a.Error(err, "should failt for removed api key")
 }
 
 func TestManager_RenewKey(t *testing.T) {
-	tests := []struct {
-		name string // description of this test case
-		// Named input parameters for receiver constructor.
-		storage keystogo.Storage
-		// Named input parameters for target function.
-		key     string
-		want    models.APIKey
-		want2   string
-		wantErr bool
-	}{
-		{name: "should fail for empty key", storage: storage.NewMemoryStorage(), key: "", wantErr: true},
-		{name: "should fail for non-existing key", storage: storage.NewMemoryStorage(), key: "non-existing-key", wantErr: true},
-		// {
-		// 	name: "should renew existing key",
-		// 	storage: (func() keystogo.Storage {
-		// 		storage := storage.NewMemoryStorage()
-		// 		storage.Create(&models.APIKey{
-		// 			Name:   "test-key",
-		// 			Key:    keystogo.HashKey("fake-key"),
-		// 			Active: true,
-		// 		})
-		// 		return storage
-		// 	})(),
-		// 	key: "fake-key",
-		// 	want: models.APIKey{
-		// 		Name:   "test-key",
-		// 		Key:    keystogo.HashKey("fake-key"),
-		// 		Active: true,
-		// 	}, want2: "fake-key", wantErr: false,
-		// },
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := keystogo.NewManager(tt.storage)
-			got, got2, gotErr := m.RenewKey(tt.key)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("RenewKey() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("RenewKey() succeeded unexpectedly")
-			}
-			if got.Key != tt.want.Key {
-				t.Errorf("RenewKey() = %v, want %v", got, tt.want)
-			}
-			if got2 != tt.want2 {
-				t.Errorf("RenewKey() = %v, want %v", got2, tt.want2)
-			}
-		})
-	}
+	const originalKey = "fake-key"
+
+	a := assert.New(t)
+	hashedKey := keystogo.HashKey(originalKey)
+
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	apikey, key, err := mngr.RenewKey("")
+
+	a.Error(err, "should fail for empty key")
+	a.Empty(apikey, "should return empty apikey when key is empty")
+	a.Empty(key, "should return empty key when key is empty")
+
+	apikey, key, err = mngr.RenewKey("wrong-key")
+
+	a.Error(err, "should fail for non-existing key")
+	a.Empty(apikey, "should return empty apikey when key is non-existing")
+	a.Empty(key, "should return empty key when key is non-existing")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    hashedKey,
+		Active: true,
+	})
+
+	apikey, key, err = mngr.RenewKey(originalKey)
+
+	a.NoError(err, "should succeed for existing key")
+	a.NotEqual(hashedKey, apikey.Key, "should return apikey with new hashed key")
+	a.NotEqual(originalKey, key, "should return same new unhashed key")
+
+	oldApiKey, _ := strg.Get(hashedKey)
+	a.False(oldApiKey.Active, "should disable old key")
+}
+
+func TestManager_ListKeys(t *testing.T) {
+	const fakeKey = "fake-key"
+
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	keys, total, _ := mngr.ListKeys(keystogo.Page{}, keystogo.Filter{})
+	a.Len(keys, 0, "should return empty list")
+	a.Equal(total, int64(0), "should return total of 0")
+
+	strg.Create(&models.APIKey{
+		Name:   "test-key",
+		Key:    keystogo.HashKey(fakeKey),
+		Active: true,
+	})
+
+	keys, total, err := mngr.ListKeys(keystogo.Page{Limit: 10, Offset: 0}, keystogo.Filter{})
+	a.NoError(err, "should succeed for existing key")
+	a.Len(keys, 1, "should return 1 key")
+	a.Equal(total, int64(1), "should return total of 1")
+}
+
+func TestManager_GenerateApiKey(t *testing.T) {
+	a := assert.New(t)
+	strg := storage.NewMemoryStorage()
+	mngr := keystogo.NewManager(strg)
+
+	name := "test-key"
+	permissions := []models.Permission{"modes:read", "modes:write"}
+	metadata := map[string]any{"test": "value"}
+	expiresAt := time.Now().Add(time.Hour)
+
+	apiKey, key, err := mngr.GenerateApiKey(name, permissions, metadata, &expiresAt)
+
+	a.NoError(err, "should succeed")
+	a.NotEmpty(apiKey.ID, "should generate a new ID")
+	a.NotEmpty(apiKey.Key, "should generate a new key")
+	a.Equal(name, apiKey.Name, "should set name")
+	a.Equal(permissions, apiKey.Permissions, "should set permissions")
+	a.Equal(metadata, apiKey.Metadata, "should set metadata")
+	a.Equal(expiresAt, *apiKey.ExpiresAt, "should set expiresAt")
+	a.True(apiKey.Active, "should set active to true")
+	// key is meant to be public.
+	a.NotEqual(key, apiKey.Key, "should return different key from api key and key.")
 }

@@ -7,11 +7,11 @@ import (
 )
 
 type Filter struct {
-	Active      *bool      // Filter by active status
-	Name        string     // Filter by name (partial match)
-	Tags        []string   // Filter by tags
-	CreatedFrom *time.Time // Filter by creation date range
-	CreatedTo   *time.Time
+	Active      bool      // Filter by active status
+	Name        string    // Filter by name (partial match)
+	Tags        []string  // Filter by tags
+	CreatedFrom time.Time // Filter by creation date range
+	CreatedTo   time.Time
 	Metadata    map[string]string // Filter by metadata
 }
 

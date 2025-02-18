@@ -2,7 +2,7 @@ package storage
 
 import (
 	"errors"
-	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/karurosux/keystogo/pkg/keystogo"
@@ -73,8 +73,6 @@ func (m *MemoryStorage) Get(hashedKey string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	fmt.Println("get", hashedKey)
-	fmt.Print(m.keys)
 	if apiKey, ok := m.keys[hashedKey]; ok {
 		return &apiKey, nil
 	}
@@ -88,16 +86,20 @@ func (m *MemoryStorage) List(page keystogo.Page, filter keystogo.Filter) ([]mode
 	defer m.mu.RUnlock()
 
 	var result []models.APIKey
-	var total int64
 
 	for _, apiKey := range m.keys {
-		// Just implementing name for the moment
-		if filter.Name != "" && filter.Name == apiKey.Name {
+		matches := true
+
+		if filter.Name != "" {
+			matches = matches && (apiKey.Name != "" && containsIgnoreCase(apiKey.Name, filter.Name))
+		}
+
+		if matches {
 			result = append(result, apiKey)
 		}
 	}
 
-	total = int64(len(result))
+	total := int64(len(result))
 
 	if page.Limit > 0 {
 		start := page.Limit * page.Offset
@@ -114,6 +116,11 @@ func (m *MemoryStorage) List(page keystogo.Page, filter keystogo.Filter) ([]mode
 	}
 
 	return result, total, nil
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	s, substr = strings.ToLower(s), strings.ToLower(substr)
+	return strings.Contains(s, substr)
 }
 
 // Ping implements keystogo.Storage.
