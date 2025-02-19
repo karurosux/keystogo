@@ -143,8 +143,6 @@ type KeyManager struct {
 }
 ```
 
-````
-
 ## Storage Backends
 
 Keystogo comes with built-in support for:
@@ -170,7 +168,7 @@ type Storage interface {
     Ping() error
     Clear() error
 }
-````
+```
 
 ## Usage Examples
 
