@@ -81,7 +81,7 @@ func (m *MemoryStorage) Get(hashedKey string) (*models.APIKey, error) {
 }
 
 // List implements keystogo.Storage.
-func (m *MemoryStorage) List(page keystogo.Page, filter keystogo.Filter) ([]models.APIKey, int64, error) {
+func (m *MemoryStorage) List(page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -90,8 +90,8 @@ func (m *MemoryStorage) List(page keystogo.Page, filter keystogo.Filter) ([]mode
 	for _, apiKey := range m.keys {
 		matches := true
 
-		if filter.Name != "" {
-			matches = matches && (apiKey.Name != "" && containsIgnoreCase(apiKey.Name, filter.Name))
+		if filter.Name != nil && *filter.Name != "" {
+			matches = matches && (apiKey.Name != "" && containsIgnoreCase(apiKey.Name, *filter.Name))
 		}
 
 		if matches {
@@ -130,10 +130,35 @@ func (m *MemoryStorage) Ping() error {
 }
 
 // Update implements keystogo.Storage.
-func (m *MemoryStorage) Update(apiKey *models.APIKey) error {
+func (m *MemoryStorage) Update(hashedKey string, apiUpdate models.ApiKeyUpdate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.keys[apiKey.Key] = *apiKey
+	apiKey, ok := m.keys[hashedKey]
+	if !ok {
+		return models.ErrKeyNotFound
+	}
+
+	if apiUpdate.Active != nil {
+		apiKey.Active = *apiUpdate.Active
+	}
+	if apiUpdate.Name != nil {
+		apiKey.Name = *apiUpdate.Name
+	}
+	if apiUpdate.ExpiresAt != nil {
+		apiKey.ExpiresAt = apiUpdate.ExpiresAt
+	}
+	if apiUpdate.Metadata != nil {
+		apiKey.Metadata = *apiUpdate.Metadata
+	}
+	if apiUpdate.Permissions != nil {
+		apiKey.Permissions = *apiUpdate.Permissions
+	}
+	if apiUpdate.LastUsedAt != nil {
+		apiKey.LastUsedAt = apiUpdate.LastUsedAt
+	}
+
+	m.keys[hashedKey] = apiKey
+
 	return nil
 }

@@ -137,7 +137,7 @@ func TestManager_ListKeys(t *testing.T) {
 	strg := storage.NewMemoryStorage()
 	mngr := keystogo.NewManager(strg)
 
-	keys, total, _ := mngr.ListKeys(keystogo.Page{}, keystogo.Filter{})
+	keys, total, _ := mngr.ListKeys(models.Page{}, models.Filter{})
 	a.Len(keys, 0, "should return empty list")
 	a.Equal(total, int64(0), "should return total of 0")
 
@@ -147,7 +147,7 @@ func TestManager_ListKeys(t *testing.T) {
 		Active: true,
 	})
 
-	keys, total, err := mngr.ListKeys(keystogo.Page{Limit: 10, Offset: 0}, keystogo.Filter{})
+	keys, total, err := mngr.ListKeys(models.Page{Limit: 10, Offset: 0}, models.Filter{})
 	a.NoError(err, "should succeed for existing key")
 	a.Len(keys, 1, "should return 1 key")
 	a.Equal(total, int64(1), "should return total of 1")

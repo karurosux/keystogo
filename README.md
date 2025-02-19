@@ -55,7 +55,7 @@ The manager struct allow us to manage keys using the implemented backend, the ma
 
 ```go
 
-type KeyManager struct {
+type Manager interface {
     // ValidateKey checks if an API key is valid and has the required permissions.
     // It verifies the key's existence, expiration status, and permission set.
     //
@@ -140,6 +140,17 @@ type KeyManager struct {
     //   - string: The plain text API key that should be securely transmitted to the client
     //   - error: nil if successful, error if the operation fails
     GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error)
+
+    // Update modifies an existing API key's properties based on the provided update parameters.
+    // It allows updating the key's name, permissions, metadata, and expiration time.
+    //
+    // Parameters:
+    //   - key: The API key string to update
+    //   - update: ApiKeyUpdate struct containing the fields to be updated
+    //
+    // Returns:
+    //   - error: nil if successful, error if key not found or update fails
+    Update(key string, update models.ApiKeyUpdate) error
 }
 ```
 
@@ -159,12 +170,7 @@ type Storage interface {
     Create(apiKey *models.APIKey) error
     Update(apiKey *models.APIKey) error
     Delete(hashedKey string) error
-
     List(page Page, filter Filter) ([]models.APIKey, int64, error)
-
-    BatchCreate(apiKeys []*models.APIKey) error
-    BatchDelete(hashedKeys []string) error
-
     Ping() error
     Clear() error
 }

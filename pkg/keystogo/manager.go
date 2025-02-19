@@ -50,8 +50,9 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 
 	// Update last used timestamp
 	now := time.Now()
-	apiKey.LastUsedAt = &now
-	if err := m.Storage.Update(apiKey); err != nil {
+	if err := m.Storage.Update(hashedKey, models.ApiKeyUpdate{
+		LastUsedAt: &now,
+	}); err != nil {
 		return models.ValidationResult{Valid: false, Error: err}
 	}
 
@@ -63,32 +64,28 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 }
 
 func (m *Manager) DisableKey(key string) error {
-	keyApi, err := m.Storage.Get(HashKey(key))
-	if err != nil {
-		return err
-	}
-	if keyApi == nil {
-		return models.ErrKeyNotFound
+	if key == "" {
+		return errors.New("key is required")
 	}
 
-	keyApi.Active = false
-	if err := m.Storage.Update(keyApi); err != nil {
+	active := false
+	if err := m.Storage.Update(HashKey(key), models.ApiKeyUpdate{
+		Active: &active,
+	}); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Manager) EnableKey(key string) error {
-	keyApi, err := m.Storage.Get(HashKey(key))
-	if err != nil {
-		return err
-	}
-	if keyApi == nil {
-		return models.ErrKeyNotFound
+	if key == "" {
+		return errors.New("key is required")
 	}
 
-	keyApi.Active = true
-	if err := m.Storage.Update(keyApi); err != nil {
+	active := true
+	if err := m.Storage.Update(HashKey(key), models.ApiKeyUpdate{
+		Active: &active,
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -132,7 +129,7 @@ func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
 }
 
 // ListKeys returns a paginated list of API keys
-func (m *Manager) ListKeys(page Page, filter Filter) ([]models.APIKey, int64, error) {
+func (m *Manager) ListKeys(page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
 	return m.Storage.List(page, filter)
 }
 
@@ -160,6 +157,10 @@ func (Manager) GenerateApiKey(name string, permissions []models.Permission, meta
 	}
 
 	return apiKey, keyStr, nil
+}
+
+func (m *Manager) Update(key string, update models.ApiKeyUpdate) error {
+	return m.Storage.Update(HashKey(key), update)
 }
 
 // Helper function to check if an API key has all required permissions
