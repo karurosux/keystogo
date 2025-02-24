@@ -133,7 +133,7 @@ func (m *Manager) ListKeys(page models.Page, filter models.Filter) ([]models.API
 	return m.Storage.List(page, filter)
 }
 
-func (Manager) GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
+func (m *Manager) GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
 	if name == "" {
 		return models.APIKey{}, "", errors.New("name is required")
 	}
@@ -154,6 +154,10 @@ func (Manager) GenerateApiKey(name string, permissions []models.Permission, meta
 		CreatedAt:   time.Now(),
 		ExpiresAt:   expiresAt,
 		Active:      true,
+	}
+
+	if err := m.Storage.Create(&apiKey); err != nil {
+		return models.APIKey{}, "", err
 	}
 
 	return apiKey, keyStr, nil
