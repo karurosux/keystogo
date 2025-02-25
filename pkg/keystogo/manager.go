@@ -57,9 +57,8 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 	}
 
 	return models.ValidationResult{
-		Valid:       true,
-		APIKey:      apiKey,
-		Permissions: apiKey.Permissions,
+		Valid:  true,
+		APIKey: apiKey,
 	}
 }
 
