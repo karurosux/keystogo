@@ -44,7 +44,9 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 	}
 
 	// Check permissions
-	if !hasRequiredPermissions(apiKey.Permissions, requiredPermissions) {
+	if apiKey.Permissions != nil && !hasRequiredPermissions(*apiKey.Permissions, requiredPermissions) {
+		return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied}
+	} else if apiKey.Permissions == nil && requiredPermissions != nil {
 		return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied}
 	}
 
@@ -132,7 +134,7 @@ func (m *Manager) ListKeys(page models.Page, filter models.Filter) ([]models.API
 	return m.Storage.List(page, filter)
 }
 
-func (m *Manager) GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
+func (m *Manager) GenerateApiKey(name string, permissions *[]models.Permission, metadata *map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
 	if name == "" {
 		return models.APIKey{}, "", errors.New("name is required")
 	}

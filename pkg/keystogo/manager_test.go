@@ -159,8 +159,8 @@ func TestManager_GenerateApiKey(t *testing.T) {
 	mngr := keystogo.NewManager(strg)
 
 	name := "test-key"
-	permissions := []models.Permission{"modes:read", "modes:write"}
-	metadata := map[string]any{"test": "value"}
+	permissions := &[]models.Permission{"modes:read", "modes:write"}
+	metadata := &map[string]any{"test": "value"}
 	expiresAt := time.Now().Add(time.Hour)
 
 	apiKey, key, err := mngr.GenerateApiKey(name, permissions, metadata, &expiresAt)
@@ -194,7 +194,7 @@ func TestManager_ValidateKey(t *testing.T) {
 		Active: true,
 	})
 
-	res = mngr.ValidateKey(fakeKey, []models.Permission{})
+	res = mngr.ValidateKey(fakeKey, nil)
 	a.True(res.Valid, "should succeed for existing key")
 	a.Equal(keystogo.HashKey(fakeKey), res.APIKey.Key, "should return same key")
 
@@ -205,7 +205,7 @@ func TestManager_ValidateKey(t *testing.T) {
 		Name:        "test-key",
 		Key:         keystogo.HashKey(fakeKey),
 		Active:      true,
-		Permissions: []models.Permission{"read:users"},
+		Permissions: &[]models.Permission{"read:users"},
 	})
 
 	res = mngr.ValidateKey(fakeKey, []models.Permission{"read:users"})

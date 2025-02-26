@@ -149,10 +149,10 @@ func (m *MemoryStorage) Update(hashedKey string, apiUpdate models.ApiKeyUpdate) 
 		apiKey.ExpiresAt = apiUpdate.ExpiresAt
 	}
 	if apiUpdate.Metadata != nil {
-		apiKey.Metadata = *apiUpdate.Metadata
+		apiKey.Metadata = apiUpdate.Metadata
 	}
 	if apiUpdate.Permissions != nil {
-		apiKey.Permissions = *apiUpdate.Permissions
+		apiKey.Permissions = apiUpdate.Permissions
 	}
 	if apiUpdate.LastUsedAt != nil {
 		apiKey.LastUsedAt = apiUpdate.LastUsedAt
