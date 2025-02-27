@@ -11,6 +11,7 @@ import (
 )
 
 func TestManager_EnableKey(t *testing.T) {
+	const fakeId = "123"
 	const fakeKey = "fake-key"
 
 	a := assert.New(t)
@@ -24,19 +25,20 @@ func TestManager_EnableKey(t *testing.T) {
 	a.Error(err, "should fail on non-existent key")
 
 	strg.Create(&models.APIKey{
+		ID:     fakeId,
 		Name:   "test-key",
 		Key:    keystogo.HashKey(fakeKey),
 		Active: false,
 	})
 
-	err = mngr.EnableKey(fakeKey)
-	a.NoError(err, "should succeed for existing key")
+	err = mngr.EnableKey(fakeId)
+	a.NoError(err, "should succeed for existing key by id.")
 
-	apiKey, err := strg.Get(keystogo.HashKey(fakeKey))
+	apiKey, err := strg.GetByHashedKey(keystogo.HashKey(fakeKey))
 	a.NoError(err, "should find the key")
 	a.True(apiKey.Active, "key should be enabled")
 
-	err = mngr.EnableKey(fakeKey)
+	err = mngr.EnableKey(fakeId)
 	a.NoError(err, "should succeed when enabling already enabled key")
 }
 
@@ -54,24 +56,26 @@ func TestManager_DisableKey(t *testing.T) {
 	a.Error(err, "should fail on non-existent key")
 
 	strg.Create(&models.APIKey{
+		ID:     "123",
 		Name:   "test-key",
 		Key:    keystogo.HashKey(fakeKey),
 		Active: true,
 	})
 
-	err = mngr.DisableKey(fakeKey)
+	err = mngr.DisableKey("123")
 	a.NoError(err, "should succeed for existing key")
 
-	apiKey, err := strg.Get(keystogo.HashKey(fakeKey))
+	apiKey, err := strg.GetByHashedKey(keystogo.HashKey(fakeKey))
 	a.NoError(err, "should find the key")
 	a.False(apiKey.Active, "key should be disabled")
 
-	err = mngr.DisableKey(fakeKey)
+	err = mngr.DisableKey("123")
 	a.NoError(err, "should succeed when disabling already disabled key")
 }
 
 func TestManager_DeleteKey(t *testing.T) {
 	const fakeKey = "fake-key"
+	const fakeId = "123"
 
 	a := assert.New(t)
 	strg := storage.NewMemoryStorage()
@@ -81,19 +85,21 @@ func TestManager_DeleteKey(t *testing.T) {
 	a.Error(err, "should fail on empty key")
 
 	strg.Create(&models.APIKey{
+		ID:     fakeId,
 		Name:   "test-key",
 		Key:    keystogo.HashKey(fakeKey),
 		Active: true,
 	})
 
-	err = mngr.DeleteKey(fakeKey)
+	err = mngr.DeleteKey(fakeId)
 	a.NoError(err, "should succeed for existing key")
 
-	_, err = strg.Get(keystogo.HashKey(fakeKey))
+	_, err = strg.GetByHashedKey(keystogo.HashKey(fakeKey))
 	a.Error(err, "should failt for removed api key")
 }
 
 func TestManager_RenewKey(t *testing.T) {
+	const originalId = "123"
 	const originalKey = "fake-key"
 
 	a := assert.New(t)
@@ -126,7 +132,7 @@ func TestManager_RenewKey(t *testing.T) {
 	a.NotEqual(hashedKey, apikey.Key, "should return apikey with new hashed key")
 	a.NotEqual(originalKey, key, "should return same new unhashed key")
 
-	oldApiKey, _ := strg.Get(hashedKey)
+	oldApiKey, _ := strg.GetByHashedKey(hashedKey)
 	a.False(oldApiKey.Active, "should disable old key")
 }
 
@@ -189,6 +195,7 @@ func TestManager_ValidateKey(t *testing.T) {
 	a.Equal(models.ErrKeyNotFound, res.Error, "should return ErrKeyNotFound")
 
 	strg.Create(&models.APIKey{
+		ID:     "id",
 		Name:   "test-key",
 		Key:    keystogo.HashKey(fakeKey),
 		Active: true,
@@ -202,6 +209,7 @@ func TestManager_ValidateKey(t *testing.T) {
 	a.False(res.Valid, "should fail if key does not have required permissions")
 
 	strg.Create(&models.APIKey{
+		ID:          "id",
 		Name:        "test-key",
 		Key:         keystogo.HashKey(fakeKey),
 		Active:      true,

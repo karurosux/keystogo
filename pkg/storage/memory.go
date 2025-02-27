@@ -2,51 +2,29 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/karurosux/keystogo/pkg/keystogo"
 	"github.com/karurosux/keystogo/pkg/models"
 )
 
 func NewMemoryStorage() keystogo.Storage {
 	return &MemoryStorage{
-		keys: make(map[string]models.APIKey),
+		keys: make(map[string]*models.APIKey),
 	}
 }
 
 type MemoryStorage struct {
 	mu   sync.RWMutex
-	keys map[string]models.APIKey
-}
-
-// BatchCreate implements keystogo.Storage.
-func (m *MemoryStorage) BatchCreate(apiKeys []*models.APIKey) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for _, apiKey := range apiKeys {
-		m.keys[apiKey.Key] = *apiKey
-	}
-
-	return nil
-}
-
-// BatchDelete implements keystogo.Storage.
-func (m *MemoryStorage) BatchDelete(hashedKeys []string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for _, hashedKey := range hashedKeys {
-		delete(m.keys, hashedKey)
-	}
-
-	return nil
+	keys map[string]*models.APIKey
 }
 
 // Clear implements keystogo.Storage.
 func (m *MemoryStorage) Clear() error {
-	m.keys = make(map[string]models.APIKey)
+	m.keys = make(map[string]*models.APIKey)
 	return nil
 }
 
@@ -54,27 +32,48 @@ func (m *MemoryStorage) Clear() error {
 func (m *MemoryStorage) Create(apiKey *models.APIKey) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	m.keys[apiKey.Key] = *apiKey
+	if apiKey.ID == "" {
+		apiKey.ID = m.getRandomKey()
+	}
+	fmt.Println("Printing apii key => ", apiKey.ID)
+	m.keys[apiKey.ID] = apiKey
 	return nil
+}
+
+func (m *MemoryStorage) getRandomKey() string {
+	return uuid.NewString()
 }
 
 // Delete implements keystogo.Storage.
-func (m *MemoryStorage) Delete(hashedKey string) error {
+func (m *MemoryStorage) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	delete(m.keys, hashedKey)
+	delete(m.keys, id)
 	return nil
 }
 
-// Get implements keystogo.Storage.
-func (m *MemoryStorage) Get(hashedKey string) (*models.APIKey, error) {
+// GetByID implements keystogo.Storage.
+func (m *MemoryStorage) GetByID(id string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if apiKey, ok := m.keys[hashedKey]; ok {
-		return &apiKey, nil
+	if apiKey, ok := m.keys[id]; ok {
+		return apiKey, nil
+	}
+
+	return nil, errors.New("api key not found")
+}
+
+// GetByHashedKey implements keystogo.Storage.
+func (m *MemoryStorage) GetByHashedKey(hashedKey string) (*models.APIKey, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, apiKey := range m.keys {
+		if apiKey.Key == hashedKey {
+			return apiKey, nil
+		}
 	}
 
 	return nil, errors.New("api key not found")
@@ -95,7 +94,7 @@ func (m *MemoryStorage) List(page models.Page, filter models.Filter) ([]models.A
 		}
 
 		if matches {
-			result = append(result, apiKey)
+			result = append(result, *apiKey)
 		}
 	}
 
@@ -130,11 +129,11 @@ func (m *MemoryStorage) Ping() error {
 }
 
 // Update implements keystogo.Storage.
-func (m *MemoryStorage) Update(hashedKey string, apiUpdate models.ApiKeyUpdate) error {
+func (m *MemoryStorage) Update(id string, apiUpdate models.ApiKeyUpdate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	apiKey, ok := m.keys[hashedKey]
+	apiKey, ok := m.keys[id]
 	if !ok {
 		return models.ErrKeyNotFound
 	}
@@ -158,7 +157,7 @@ func (m *MemoryStorage) Update(hashedKey string, apiUpdate models.ApiKeyUpdate) 
 		apiKey.LastUsedAt = apiUpdate.LastUsedAt
 	}
 
-	m.keys[hashedKey] = apiKey
+	m.keys[id] = apiKey
 
 	return nil
 }
