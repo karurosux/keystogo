@@ -1,6 +1,6 @@
 # keystogo
 
-A flexible API key management library for Go applications. Keystogo provides a complete solution for handling API key validation, permissions, and lifecycle management with customizable storage backends.
+A Go library for managing API keys. Generate, validate, and manage API keys with permission controls and customizable storage backends.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/karurosux/keystogo.svg)](https://pkg.go.dev/github.com/karurosux/keystogo)
 [![Go Report Card](https://goreportcard.com/badge/github.com/karurosux/keystogo)](https://goreportcard.com/report/github.com/karurosux/keystogo)
@@ -8,11 +8,12 @@ A flexible API key management library for Go applications. Keystogo provides a c
 
 ## Features
 
-- 🔐 API key validation and management
-- 🔑 Flexible permission-based access control
-- 💾 Pluggable storage backends
-- ⏰ Key expiration management
-- 🔄 Easy integration with existing Go applications
+- Generate cryptographically secure API keys (32-byte random values)
+- Validate keys with permission-based access control
+- Key lifecycle management (enable, disable, renew, delete)
+- Key expiration support
+- Pluggable storage backends
+- SHA-256 hashing for secure key storage
 
 ## Installation
 
@@ -26,153 +27,179 @@ go get github.com/karurosux/keystogo
 package main
 
 import (
+    "context"
     "log"
+    "time"
+
     "github.com/karurosux/keystogo/pkg/keystogo"
     "github.com/karurosux/keystogo/pkg/models"
-    "github.com/karurosux/keystogo/pkg/storage/memory"
+    "github.com/karurosux/keystogo/pkg/storage"
 )
 
 func main() {
-    // Initialize with in-memory storage
-    storage := memory.NewMemoryStorage()
+    ctx := context.Background()
+
+    storage := storage.NewMemoryStorage()
     manager := keystogo.NewManager(storage)
 
-    // Validate an API key with required permissions
-    result := manager.ValidateKey("your-api-key", []models.Permission{"read:users"})
+    expiresAt := time.Now().Add(365 * 24 * time.Hour)
+    permissions := &[]models.Permission{"read:users", "write:users"}
 
+    apiKey, plainKey, err := manager.GenerateApiKey(ctx, "my-service", permissions, nil, &expiresAt)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("Generated key ID: %s", apiKey.ID)
+    log.Printf("Plain key (save this, it won't be shown again): %s", plainKey)
+
+    result := manager.ValidateKey(ctx, plainKey, []models.Permission{"read:users"})
     if !result.Valid {
-        log.Printf("Key validation failed: %v", result.Error)
+        log.Printf("Validation failed: %v", result.Error)
         return
     }
 
-    log.Printf("Key is valid with permissions: %v", result.Permissions)
+    log.Println("Key is valid")
 }
 ```
 
-## Using manager
+## How It Works
 
-The manager struct allow us to manage keys using the implemented backend, the manager has the next utilities:
+Keys are generated as cryptographically random 32-byte values and hashed with SHA-256 before storage. The plain text key is only returned once during generation and cannot be recovered later. This library is designed for system-generated keys, not user-provided keys.
+
+## Manager Methods
+
+The Manager provides methods for key management:
 
 ```go
-
 type Manager interface {
-    // ValidateKey checks if an API key is valid and has the required permissions.
-    // It verifies the key's existence, expiration status, and permission set.
-    //
-    // Parameters:
-    //   - key: The API key string to validate
-    //   - requiredPermissions: Slice of permissions that the key must have, this could be empty
-    //    object if you only want to check license have not expired.
-    //
-    // Returns:
-    //   models.ValidationResult containing:
-    //   - Valid: true if key is valid and has all required permissions
-    //   - Error: error message if validation fails
-    //   - Permissions: permissions associated with the key
-    ValidateKey(key string, requiredPermissions []models.Permission) models.ValidationResult
-
-    // DisableKey disables an API key, preventing it from being used for authentication
-    // while preserving the key and its associated data in storage.
-    //
-    // Parameters:
-    //   - key: The API key string to disable
-    //
-    // Returns:
-    //   - error: nil if successful, error if key not found or operation fails
-    DisableKey(key string) error
-
-    // EnableKey enables a previously disabled API key, allowing it to be used for authentication again.
-    // If the key is already enabled, this operation has no effect.
-    //
-    // Parameters:
-    //   - key: The API key string to enable
-    //
-    // Returns:
-    //   - error: nil if successful, error if key not found or operation fails
-    EnableKey(key string) error
-
-    // DeleteKey permanently removes an API key from storage. Once deleted, the key can no longer
-    // be used for authentication and all associated data (permissions, metadata, etc.) is removed.
-    // This operation cannot be undone.
-    //
-    // Parameters:
-    //   - key: The API key string to delete
-    //
-    // Returns:
-    //   - error: nil if deletion was successful, error if key not found or deletion fails
-    DeleteKey(key string) error
-
-    // RenewKey creates a new API key while invalidating the old one. This operation
-    // preserves all the original key's properties (permissions, metadata, expiration)
-    // but generates a new key string and hash. The old key is automatically disabled.
-    //
-    // Parameters:
-    //   - key: The current API key string to renew
-    //
-    // Returns:
-    //   - models.APIKey: The newly created API key object
-    //   - string: The plain text key string that should be provided to the client
-    //   - error: nil if successful, error if key not found or operation fails
-    RenewKey(key string) (models.APIKey, string, error)
-
-    // ListKeys returns a paginated list of API keys with optional filtering.
-    //
-    // Parameters:
-    //   - page: Pagination settings including offset and limit
-    //   - filter: Filter criteria to narrow down the results (e.g., by name, status, or date range)
-    //
-    // Returns:
-    //   - []models.APIKey: Slice of API keys matching the filter criteria for the requested page
-    //   - int64: Total count of API keys matching the filter criteria (across all pages)
-    //   - error: nil if successful, error if operation fails
-    ListKeys(page Page, filter Filter) ([]models.APIKey, int64, error)
-
-    // GenerateApiKey creates a new API key with the specified parameters.
-    //
-    // Parameters:
-    //   - name: A human-readable identifier for the API key
-    //   - permissions: A slice of permissions to be associated with the key
-    //   - metadata: Optional key-value pairs for storing additional information
-    //   - expiresAt: Optional expiration time for the key. If nil, the key never expires
-    //
-    // Returns:
-    //   - models.APIKey: The created API key object containing all key details
-    //   - string: The plain text API key that should be securely transmitted to the client
-    //   - error: nil if successful, error if the operation fails
-    GenerateApiKey(name string, permissions []models.Permission, metadata map[string]any, expiresAt *time.Time) (models.APIKey, string, error)
-
-    // Update modifies an existing API key's properties based on the provided update parameters.
-    // It allows updating the key's name, permissions, metadata, and expiration time.
-    //
-    // Parameters:
-    //   - key: The API key string to update
-    //   - update: ApiKeyUpdate struct containing the fields to be updated
-    //
-    // Returns:
-    //   - error: nil if successful, error if key not found or update fails
-    Update(key string, update models.ApiKeyUpdate) error
+    ValidateKey(ctx context.Context, key string, requiredPermissions []models.Permission) models.ValidationResult
+    DisableKey(ctx context.Context, id string) error
+    EnableKey(ctx context.Context, id string) error
+    DeleteKey(ctx context.Context, id string) error
+    RenewKey(ctx context.Context, key string) (models.APIKey, string, error)
+    ListKeys(ctx context.Context, page models.Page, filter models.Filter) ([]models.APIKey, int64, error)
+    GenerateApiKey(ctx context.Context, name string, permissions *[]models.Permission, metadata *map[string]any, expiresAt *time.Time) (models.APIKey, string, error)
+    Update(ctx context.Context, id string, update models.ApiKeyUpdate) error
 }
 ```
+
+## Key Expiration
+
+Keys can be created with an optional expiration time. Expired keys are automatically filtered from list operations and rejected during validation.
+
+```go
+expiresAt := time.Now().Add(30 * 24 * time.Hour)
+apiKey, plainKey, err := manager.GenerateApiKey(ctx, "temp-key", nil, nil, &expiresAt)
+
+result := manager.ValidateKey(ctx, plainKey, nil)
+if !result.Valid {
+    log.Printf("Key expired: %v", result.Error)
+}
+```
+
+### Automatic Expiration Handling
+
+All storage backends automatically filter expired keys from list operations. Additionally, you can manually clean up expired keys:
+
+```go
+count, err := manager.CleanupExpired(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+log.Printf("Cleaned up %d expired keys", count)
+```
+
+### Storage-Specific Behavior
+
+- **Redis**: Uses native TTL expiration. Keys are automatically removed when they expire.
+- **PostgreSQL**: Expired keys remain in the database until `CleanupExpired()` is called. List operations filter them using SQL `WHERE` clauses.
+- **Memory**: Expired keys remain in memory until `CleanupExpired()` is called. List operations filter them at runtime.
 
 ## Storage Backends
 
-Keystogo comes with built-in support for:
+Included storage implementations:
 
-- In-memory storage (for testing and development)
-- PostgreSQL (coming soon)
-- Redis (coming soon)
+- In-memory (for testing and development)
+- PostgreSQL (with configurable table names and column mapping)
+- Redis (with configurable key prefixes and storage modes)
+
+### PostgreSQL Storage
+
+Use the same database connection for multiple key tables (licenses, API keys, service tokens, etc.):
+
+```go
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/karurosux/keystogo/pkg/storage"
+)
+
+db, _ := sql.Open("postgres", "postgres://user:pass@localhost/db?sslmode=disable")
+
+licenseConfig := storage.PostgresConfig{
+    TableName: "licenses",
+    SchemaName: "public",
+    ColumnMapping: storage.DefaultPostgresConfig().ColumnMapping,
+}
+licenseStorage := storage.NewPostgresStorage(db, &licenseConfig)
+licenseManager := keystogo.NewManager(licenseStorage)
+
+apiKeyConfig := storage.PostgresConfig{
+    TableName: "api_keys",
+    SchemaName: "public",
+    ColumnMapping: storage.DefaultPostgresConfig().ColumnMapping,
+}
+apiKeyStorage := storage.NewPostgresStorage(db, &apiKeyConfig)
+apiKeyManager := keystogo.NewManager(apiKeyStorage)
+```
+
+### Redis Storage
+
+Configure key prefixes for different key types:
+
+```go
+import (
+    "github.com/redis/go-redis/v9"
+    "github.com/karurosux/keystogo/pkg/storage"
+)
+
+client := redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+})
+
+licenseConfig := storage.RedisConfig{
+    KeyPrefix: "license:",
+    HashIndexKey: "license:hash_index",
+    UseHashStorage: true,
+}
+licenseStorage := storage.NewRedisStorage(client, &licenseConfig)
+licenseManager := keystogo.NewManager(licenseStorage)
+
+apiKeyConfig := storage.RedisConfig{
+    KeyPrefix: "apikey:",
+    HashIndexKey: "apikey:hash_index",
+    UseHashStorage: true,
+}
+apiKeyStorage := storage.NewRedisStorage(client, &apiKeyConfig)
+apiKeyManager := keystogo.NewManager(apiKeyStorage)
+```
+
+### Custom Storage
 
 You can implement your own storage backend by implementing the `Storage` interface:
 
 ```go
 type Storage interface {
-    Get(hashedKey string) (*models.APIKey, error)
-    Create(apiKey *models.APIKey) error
-    Update(apiKey *models.APIKey) error
-    Delete(hashedKey string) error
-    List(page Page, filter Filter) ([]models.APIKey, int64, error)
-    Ping() error
-    Clear() error
+    GetByID(ctx context.Context, id string) (*models.APIKey, error)
+    GetByHashedKey(ctx context.Context, hashedKey string) (*models.APIKey, error)
+    Create(ctx context.Context, apiKey *models.APIKey) error
+    Update(ctx context.Context, id string, apiKey models.ApiKeyUpdate) error
+    Delete(ctx context.Context, id string) error
+    List(ctx context.Context, page models.Page, filter models.Filter) ([]models.APIKey, int64, error)
+    Ping(ctx context.Context) error
+    Clear(ctx context.Context) error
+    CleanupExpired(ctx context.Context) (int64, error)
 }
 ```
 
@@ -181,7 +208,8 @@ type Storage interface {
 ### Basic Validation
 
 ```go
-result := manager.ValidateKey(apiKey, []keystogo.Permission{"read:users"})
+ctx := context.Background()
+result := manager.ValidateKey(ctx, apiKey, []models.Permission{"read:users"})
 if !result.Valid {
     return fmt.Errorf("invalid API key: %v", result.Error)
 }
@@ -198,13 +226,16 @@ func NewCustomStorage() keystogo.Storage {
     return &CustomStorage{}
 }
 
-func (s *CustomStorage) Get(hashedKey string) (*keystogo.APIKey, error) {
+func (s *CustomStorage) GetByHashedKey(ctx context.Context, hashedKey string) (*models.APIKey, error) {
     // Your implementation
 }
 
-... Other implementations
+func (s *CustomStorage) GetByID(ctx context.Context, id string) (*models.APIKey, error) {
+    // Your implementation
+}
 
-// Use your custom storage
+// ... Implement other Storage interface methods
+
 storage := NewCustomStorage()
 manager := keystogo.NewManager(storage)
 ```
@@ -225,14 +256,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- 📚 [Documentation](https://pkg.go.dev/github.com/karurosux/keystogo)
-- 🐛 [Issue Tracker](https://github.com/karurosux/keystogo/issues)
-- 💬 [Discussions](https://github.com/karurosux/keystogo/discussions)
+- [Documentation](https://pkg.go.dev/github.com/karurosux/keystogo)
+- [Issue Tracker](https://github.com/karurosux/keystogo/issues)
+- [Discussions](https://github.com/karurosux/keystogo/discussions)
 
 ## Roadmap
 
-- [ ] PostgreSQL storage implementation
-- [ ] Redis storage implementation
+- [x] PostgreSQL storage implementation
+- [x] Redis storage implementation
 - [ ] Key rotation capabilities
 - [ ] Batch key operations
 - [ ] Key generation utilities

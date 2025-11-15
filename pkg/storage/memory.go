@@ -1,10 +1,10 @@
 package storage
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/karurosux/keystogo/pkg/keystogo"
@@ -13,30 +13,33 @@ import (
 
 func NewMemoryStorage() keystogo.Storage {
 	return &MemoryStorage{
-		keys: make(map[string]*models.APIKey),
+		keys:      make(map[string]*models.APIKey),
+		hashIndex: make(map[string]string),
 	}
 }
 
 type MemoryStorage struct {
-	mu   sync.RWMutex
-	keys map[string]*models.APIKey
+	mu        sync.RWMutex
+	keys      map[string]*models.APIKey
+	hashIndex map[string]string
 }
 
-// Clear implements keystogo.Storage.
-func (m *MemoryStorage) Clear() error {
+func (m *MemoryStorage) Clear(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.keys = make(map[string]*models.APIKey)
+	m.hashIndex = make(map[string]string)
 	return nil
 }
 
-// Create implements keystogo.Storage.
-func (m *MemoryStorage) Create(apiKey *models.APIKey) error {
+func (m *MemoryStorage) Create(ctx context.Context, apiKey *models.APIKey) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if apiKey.ID == "" {
 		apiKey.ID = m.getRandomKey()
 	}
-	fmt.Println("Printing apii key => ", apiKey.ID)
 	m.keys[apiKey.ID] = apiKey
+	m.hashIndex[apiKey.Key] = apiKey.ID
 	return nil
 }
 
@@ -44,17 +47,18 @@ func (m *MemoryStorage) getRandomKey() string {
 	return uuid.NewString()
 }
 
-// Delete implements keystogo.Storage.
-func (m *MemoryStorage) Delete(id string) error {
+func (m *MemoryStorage) Delete(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if apiKey, ok := m.keys[id]; ok {
+		delete(m.hashIndex, apiKey.Key)
+	}
 	delete(m.keys, id)
 	return nil
 }
 
-// GetByID implements keystogo.Storage.
-func (m *MemoryStorage) GetByID(id string) (*models.APIKey, error) {
+func (m *MemoryStorage) GetByID(ctx context.Context, id string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -62,35 +66,46 @@ func (m *MemoryStorage) GetByID(id string) (*models.APIKey, error) {
 		return apiKey, nil
 	}
 
-	return nil, errors.New("api key not found")
+	return nil, models.ErrKeyNotFound()
 }
 
-// GetByHashedKey implements keystogo.Storage.
-func (m *MemoryStorage) GetByHashedKey(hashedKey string) (*models.APIKey, error) {
+func (m *MemoryStorage) GetByHashedKey(ctx context.Context, hashedKey string) (*models.APIKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	for _, apiKey := range m.keys {
-		if apiKey.Key == hashedKey {
-			return apiKey, nil
-		}
+	id, ok := m.hashIndex[hashedKey]
+	if !ok {
+		return nil, models.ErrKeyNotFound()
 	}
 
-	return nil, errors.New("api key not found")
+	apiKey, ok := m.keys[id]
+	if !ok {
+		return nil, models.ErrKeyNotFound()
+	}
+
+	return apiKey, nil
 }
 
-// List implements keystogo.Storage.
-func (m *MemoryStorage) List(page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
+func (m *MemoryStorage) List(ctx context.Context, page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var result []models.APIKey
+	result := make([]models.APIKey, 0, len(m.keys))
+	now := time.Now()
 
 	for _, apiKey := range m.keys {
+		if apiKey.ExpiresAt != nil && now.After(*apiKey.ExpiresAt) {
+			continue
+		}
+
 		matches := true
 
 		if filter.Name != nil && *filter.Name != "" {
 			matches = matches && (apiKey.Name != "" && containsIgnoreCase(apiKey.Name, *filter.Name))
+		}
+
+		if filter.Active != nil {
+			matches = matches && (apiKey.Active == *filter.Active)
 		}
 
 		if matches {
@@ -101,7 +116,7 @@ func (m *MemoryStorage) List(page models.Page, filter models.Filter) ([]models.A
 	total := int64(len(result))
 
 	if page.Limit > 0 {
-		start := page.Limit * page.Offset
+		start := page.Offset
 		end := start + page.Limit
 
 		if start < len(result) {
@@ -122,20 +137,17 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// Ping implements keystogo.Storage.
-func (m *MemoryStorage) Ping() error {
-	// Just do nothing in this case.
+func (m *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Update implements keystogo.Storage.
-func (m *MemoryStorage) Update(id string, apiUpdate models.ApiKeyUpdate) error {
+func (m *MemoryStorage) Update(ctx context.Context, id string, apiUpdate models.ApiKeyUpdate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	apiKey, ok := m.keys[id]
 	if !ok {
-		return models.ErrKeyNotFound
+		return models.ErrKeyNotFound()
 	}
 
 	if apiUpdate.Active != nil {
@@ -160,4 +172,22 @@ func (m *MemoryStorage) Update(id string, apiUpdate models.ApiKeyUpdate) error {
 	m.keys[id] = apiKey
 
 	return nil
+}
+
+func (m *MemoryStorage) CleanupExpired(ctx context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	count := int64(0)
+
+	for id, apiKey := range m.keys {
+		if apiKey.ExpiresAt != nil && now.After(*apiKey.ExpiresAt) {
+			delete(m.hashIndex, apiKey.Key)
+			delete(m.keys, id)
+			count++
+		}
+	}
+
+	return count, nil
 }

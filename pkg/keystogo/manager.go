@@ -1,10 +1,10 @@
 package keystogo
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -24,35 +24,37 @@ func NewManager(storage Storage) *Manager {
 	}
 }
 
-// ValidateKey checks if an API key is valid and has the required permissions
-func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permission) models.ValidationResult {
+func (m *Manager) ValidateKey(ctx context.Context, key string, requiredPermissions []models.Permission) models.ValidationResult {
+	if key == "" {
+		return models.ValidationResult{Valid: false, Error: models.ErrEmptyKey()}
+	}
+
 	hashedKey := HashKey(key)
 
-	apiKey, err := m.Storage.GetByHashedKey(hashedKey)
+	apiKey, err := m.Storage.GetByHashedKey(ctx, hashedKey)
 	if err != nil {
-		return models.ValidationResult{Valid: false, Error: models.ErrKeyNotFound}
+		return models.ValidationResult{Valid: false, Error: models.ErrKeyNotFound()}
 	}
 
-	// Check if key is active
 	if !apiKey.Active {
-		return models.ValidationResult{Valid: false, Error: models.ErrKeyInactive}
+		return models.ValidationResult{Valid: false, Error: models.ErrKeyInactive()}
 	}
 
-	// Check expiration
 	if apiKey.ExpiresAt != nil && time.Now().After(*apiKey.ExpiresAt) {
-		return models.ValidationResult{Valid: false, Error: models.ErrKeyExpired}
+		return models.ValidationResult{Valid: false, Error: models.ErrKeyExpired()}
 	}
 
-	// Check permissions
-	if apiKey.Permissions != nil && !hasRequiredPermissions(*apiKey.Permissions, requiredPermissions) {
-		return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied}
-	} else if apiKey.Permissions == nil && requiredPermissions != nil {
-		return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied}
+	if requiredPermissions != nil && len(requiredPermissions) > 0 {
+		if apiKey.Permissions == nil {
+			return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied()}
+		}
+		if !hasRequiredPermissions(*apiKey.Permissions, requiredPermissions) {
+			return models.ValidationResult{Valid: false, Error: models.ErrPermissionDenied()}
+		}
 	}
 
-	// Update last used timestamp
 	now := time.Now()
-	if err := m.Storage.Update(apiKey.ID, models.ApiKeyUpdate{
+	if err := m.Storage.Update(ctx, apiKey.ID, models.ApiKeyUpdate{
 		LastUsedAt: &now,
 	}); err != nil {
 		return models.ValidationResult{Valid: false, Error: err}
@@ -64,13 +66,13 @@ func (m *Manager) ValidateKey(key string, requiredPermissions []models.Permissio
 	}
 }
 
-func (m *Manager) DisableKey(id string) error {
+func (m *Manager) DisableKey(ctx context.Context, id string) error {
 	if id == "" {
-		return errors.New("key is required")
+		return models.ErrEmptyID()
 	}
 
 	active := false
-	if err := m.Storage.Update(id, models.ApiKeyUpdate{
+	if err := m.Storage.Update(ctx, id, models.ApiKeyUpdate{
 		Active: &active,
 	}); err != nil {
 		return err
@@ -78,13 +80,13 @@ func (m *Manager) DisableKey(id string) error {
 	return nil
 }
 
-func (m *Manager) EnableKey(id string) error {
+func (m *Manager) EnableKey(ctx context.Context, id string) error {
 	if id == "" {
-		return errors.New("key is required")
+		return models.ErrEmptyID()
 	}
 
 	active := true
-	if err := m.Storage.Update(id, models.ApiKeyUpdate{
+	if err := m.Storage.Update(ctx, id, models.ApiKeyUpdate{
 		Active: &active,
 	}); err != nil {
 		return err
@@ -92,26 +94,25 @@ func (m *Manager) EnableKey(id string) error {
 	return nil
 }
 
-func (m *Manager) DeleteKey(id string) error {
+func (m *Manager) DeleteKey(ctx context.Context, id string) error {
 	if id == "" {
-		return errors.New("key is required")
+		return models.ErrEmptyID()
 	}
-	return m.Storage.Delete(id)
+	return m.Storage.Delete(ctx, id)
 }
 
-// RenewKey creates a new API key while invalidating the old one
-func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
+func (m *Manager) RenewKey(ctx context.Context, key string) (models.APIKey, string, error) {
 	if key == "" {
-		return models.APIKey{}, "", errors.New("key is required")
+		return models.APIKey{}, "", models.ErrEmptyKey()
 	}
 	oldHash := HashKey(key)
-	oldKey, err := m.Storage.GetByHashedKey(oldHash)
+	oldKey, err := m.Storage.GetByHashedKey(ctx, oldHash)
 	if err != nil {
 		return models.APIKey{}, "", err
 	}
 
-	// Create new key with same permissions and metadata
 	newKey, keyStr, err := m.GenerateApiKey(
+		ctx,
 		oldKey.Name,
 		oldKey.Permissions,
 		oldKey.Metadata,
@@ -121,22 +122,20 @@ func (m *Manager) RenewKey(key string) (models.APIKey, string, error) {
 		return models.APIKey{}, "", err
 	}
 
-	// Disable old key
-	if err := m.DisableKey(oldKey.ID); err != nil {
+	if err := m.DisableKey(ctx, oldKey.ID); err != nil {
 		return models.APIKey{}, "", err
 	}
 
 	return newKey, keyStr, nil
 }
 
-// ListKeys returns a paginated list of API keys
-func (m *Manager) ListKeys(page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
-	return m.Storage.List(page, filter)
+func (m *Manager) ListKeys(ctx context.Context, page models.Page, filter models.Filter) ([]models.APIKey, int64, error) {
+	return m.Storage.List(ctx, page, filter)
 }
 
-func (m *Manager) GenerateApiKey(name string, permissions *[]models.Permission, metadata *map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
+func (m *Manager) GenerateApiKey(ctx context.Context, name string, permissions *[]models.Permission, metadata *map[string]any, expiresAt *time.Time) (models.APIKey, string, error) {
 	if name == "" {
-		return models.APIKey{}, "", errors.New("name is required")
+		return models.APIKey{}, "", models.ErrEmptyName()
 	}
 
 	key := make([]byte, 32)
@@ -157,15 +156,27 @@ func (m *Manager) GenerateApiKey(name string, permissions *[]models.Permission, 
 		Active:      true,
 	}
 
-	if err := m.Storage.Create(&apiKey); err != nil {
+	if err := m.Storage.Create(ctx, &apiKey); err != nil {
 		return models.APIKey{}, "", err
 	}
 
 	return apiKey, keyStr, nil
 }
 
-func (m *Manager) Update(key string, update models.ApiKeyUpdate) error {
-	return m.Storage.Update(key, update)
+func (m *Manager) Update(ctx context.Context, key string, update models.ApiKeyUpdate) error {
+	if key == "" {
+		return models.ErrEmptyID()
+	}
+
+	if update.Name != nil && *update.Name == "" {
+		return models.ErrEmptyName()
+	}
+
+	return m.Storage.Update(ctx, key, update)
+}
+
+func (m *Manager) CleanupExpired(ctx context.Context) (int64, error) {
+	return m.Storage.CleanupExpired(ctx)
 }
 
 // Helper function to check if an API key has all required permissions
